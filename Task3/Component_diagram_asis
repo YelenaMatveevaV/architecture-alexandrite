@@ -1,0 +1,55 @@
+@startuml
+title Aleksandrit Component Diagram
+
+!includeurl https://raw.githubusercontent.com/RicardoNiepel/C4-PlantUML/master/C4_Component.puml
+
+' Установка шрифта и размера диаграммы
+skinparam {
+    ArrowColor #000000
+    DefaultFontName Helvetica
+    DefaultFontSize 12
+}
+
+' Определение пользователей (Actors)
+actor "Customer [Person]" as customer
+actor "Seller [Person]" as seller
+actor "API user [Person]" as api_user
+actor "Operator [Person]" as operator
+
+' Определение сервисов (Components)
+component "Internet Shop\n[Container: Vue, TypeScript, Three.js]\nUser can make an order, upload 3d model, work in 3d editor" as internet_shop
+component "Shop API\n[Container: SpringBoot]\nreceives user generated or uploaded 3d file, saves information about order from customer perspective" as shop_api
+component "CRM\n[Container: Vue, Typescript]\nDescription of web browser container role/responsibility" as crm
+component "CRM API\n[Container: SpringBoot]\nDescription of container role/responsibility" as crm_api
+component "MES API\n[Container: C#]\nAssigns orders on operators, Shows list of orders, Calculates price of the order" as mes_api
+component "MES\n[Container: React, typescript]\nprovides interface to assign orders on operators, shows list of orders" as mes
+
+' Определение хранилищ данных (Databases)
+database "Shop DB\n[Container: PostgreSQL]\nHolds main information about customers and its orders" as shop_db
+database "MES db\n[Container: PostgreSQL]\nHolds information about orders, its assignments on operators and statuses from MES perspective" as mes_db
+
+' Определение очереди сообщений (Queue)
+queue "Messages Queue\n[Container: RabbitMQ]\nSend messages about new orders, changes of statuses between containers, has several topics" as messages_queue
+
+' Определение хранилища файлов
+component "3d files storage\n[Container: S3-based storage]\nstores 3d files so that can be calculated" as s3_storage
+
+
+' Соединения между компонентами
+customer --> internet_shop : Makes an order
+seller --> crm : Confirms manufacturing
+api_user --> mes_api : Interacts with MES API
+operator --> mes : Takes orders for manufacturing
+internet_shop --> shop_api : Sends order details
+shop_api --> shop_db : Saves order information
+shop_api --> s3_storage : Uploads files
+crm --> crm_api : Interacts with CRM API
+crm_api --> messages_queue : Sends messages
+crm_api --> s3_storage : Uploads files
+crm_api --> shop_db : Holds information about work with customers and its orders
+mes_api --> messages_queue : Receives messages
+mes_api --> mes_db : Stores order assignments
+mes_api --> s3_storage : Uploads files
+mes --> mes_api : Interacts with MES API
+
+@enduml

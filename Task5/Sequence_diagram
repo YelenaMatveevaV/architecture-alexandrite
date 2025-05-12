@@ -1,0 +1,48 @@
+@startuml
+title Sequence Diagram: Reading Order List and Updating Order Status with Centralized and HTTP Caching
+
+actor Operator as operator
+participant "API Gateway" as api_gateway
+participant "Redis Cache" as redis_cache
+participant "MES API" as mes_api
+participant "MES DB" as mes_db
+participant "Messages Queue" as messages_queue
+participant "CRM API" as crm_api
+
+== Reading Order List ==
+operator -> api_gateway : Request order list (GET /orders)
+api_gateway -> redis_cache : Check if order list is cached in HTTP cache
+alt Order list is cached
+    redis_cache --> api_gateway : Return cached order list
+    api_gateway --> operator : Display order list
+else Order list is not cached
+    api_gateway -> mes_api : Forward request to MES API
+    mes_api -> redis_cache : Check if order list is cached in Redis
+    alt Order list is cached in Redis
+        redis_cache --> mes_api : Return cached order list
+        mes_api --> api_gateway : Return order list
+        api_gateway -> redis_cache : Cache response in HTTP cache (TTL = 5 minutes)
+        api_gateway --> operator : Display order list
+    else Order list is not cached in Redis
+        mes_api -> mes_db : Query database for order list
+        mes_db --> mes_api : Return order list
+        mes_api -> redis_cache : Cache order list in Redis (TTL = 5 minutes)
+        mes_api --> api_gateway : Return order list
+        api_gateway -> redis_cache : Cache response in HTTP cache (TTL = 5 minutes)
+        api_gateway --> operator : Display order list
+    end
+end
+
+== Updating Order Status ==
+operator -> mes : Update order status (e.g., to MANUFACTURING_STARTED)
+mes -> mes_api : Send updated order status
+mes_api -> redis_cache : Invalidate cached order list in Redis
+mes_api -> mes_db : Update order status in database
+mes_db --> mes_api : Confirm status update
+mes_api -> messages_queue : Notify CRM API about status change
+messages_queue -> crm_api : Forward status change notification
+crm_api -> redis_cache : Invalidate cached order list in Redis (if applicable)
+crm_api -> api_gateway : Notify API Gateway to invalidate HTTP cache
+api_gateway -> redis_cache : Invalidate cached response in HTTP cache
+
+@enduml

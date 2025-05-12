@@ -1,0 +1,93 @@
+@startuml
+title Aleksandrit Component Diagram
+
+!includeurl https://raw.githubusercontent.com/RicardoNiepel/C4-PlantUML/master/C4_Component.puml
+
+' Установка шрифта и размера диаграммы
+skinparam {
+    ArrowColor #000000
+    DefaultFontName Helvetica
+    DefaultFontSize 12
+}
+
+' Определение пользователей (Actors)
+actor "Customer [Person]" as customer
+actor "Seller [Person]" as seller
+actor "API user [Person]" as api_user
+actor "Operator [Person]" as operator
+
+' Определение сервисов (Components)
+component "Internet Shop\n[Container: Vue, TypeScript, Three.js]\nUser can make an order, upload 3d model, work in 3d editor" as internet_shop
+component "Shop API\n[Container: SpringBoot]\nreceives user generated or uploaded 3d file, saves information about order from customer perspective" as shop_api
+component "CRM\n[Container: Vue, Typescript]\nDescription of web browser container role/responsibility" as crm
+component "CRM API\n[Container: SpringBoot]\nDescription of container role/responsibility" as crm_api
+component "MES API\n[Container: C#]\nAssigns orders on operators, Shows list of orders, Calculates price of the order" as mes_api
+component "MES\n[Container: React, typescript]\nprovides interface to assign orders on operators, shows list of orders" as mes
+
+' Определение хранилищ данных (Databases)
+database "Shop DB\n[Container: PostgreSQL]\nHolds main information about customers and its orders" as shop_db
+database "MES db\n[Container: PostgreSQL]\nHolds information about orders, its assignments on operators and statuses from MES perspective" as mes_db
+
+' Определение очереди сообщений (Queue)
+queue "Messages Queue\n[Container: RabbitMQ]\nSend messages about new orders, changes of statuses between containers, has several topics" as messages_queue
+
+' Определение хранилища файлов
+component "3d files storage\n[Container: S3-based storage]\nstores 3d files so that can be calculated" as s3_storage
+
+' Определение Kubernetes_new
+component "Kubernetes Cluster" as kubernetes
+
+' Определение Linkerd_new
+component "Linkerd Service Mesh" as linkerd
+
+' Определение систем мониторинга_new
+component "Prometheus\n[Metric Collection]" as prometheus
+component "Loki\n[Log Collection]" as loki
+component "Jaeger\n[Trace Collection]" as jaeger
+
+' Соединения между компонентами
+
+' Потоки данных через Kubernetes и Linkerd
+customer --> kubernetes : Makes an order
+kubernetes --> internet_shop : Routes request
+internet_shop --> kubernetes : Sends order details
+kubernetes --> shop_api : Routes request
+shop_api --> kubernetes : Saves order information
+kubernetes --> shop_db : Stores order data
+kubernetes --> messages_queue : Sends message about new order
+
+crm --> kubernetes : Interacts with CRM API
+kubernetes --> crm_api : Routes request
+crm_api --> kubernetes : Sends messages
+messages_queue -->  kubernetes : Routes messages
+ 
+mes_api --> kubernetes : Receives messages
+kubernetes --> mes_api : Accesses 3D files, stores order assignments, updated status
+kubernetes --> s3_storage : Routes request
+kubernetes --> mes_db : Stores order assignments, updated status
+
+mes --> kubernetes : Assigns orders
+
+api_user --> kubernetes : Interacts with MES API
+
+operator --> kubernetes : Takes orders for manufacturing
+kubernetes --> mes : Routes request
+
+seller --> kubernetes : Confirms manufacturing
+kubernetes --> crm : Routes request
+
+' Интеграция Linkerd_new
+kubernetes --> linkerd : Injects sidecar proxies
+linkerd --> internet_shop : Manages traffic
+linkerd --> shop_api : Manages traffic
+linkerd --> crm : Manages traffic
+linkerd --> crm_api : Manages traffic
+linkerd --> mes_api : Manages traffic
+linkerd --> mes : Manages traffic
+
+' Интеграция систем мониторинга_new
+kubernetes --> prometheus : Exports metrics
+kubernetes --> loki : Exports logs
+kubernetes --> jaeger : Exports traces
+
+@enduml
