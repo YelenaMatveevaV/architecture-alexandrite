@@ -1,0 +1,126 @@
+@startuml
+title Aleksandrit Component Diagram with CDN for 3D Files and Local Caching
+
+!includeurl https://raw.githubusercontent.com/RicardoNiepel/C4-PlantUML/master/C4_Component.puml   
+
+' Установка шрифта и размера диаграммы
+skinparam {
+    ArrowColor #000000
+    DefaultFontName Helvetica
+    DefaultFontSize 12
+}
+
+' Определение пользователей (Actors)
+actor "Customer [Person]" as customer
+actor "Seller [Person]" as seller
+actor "API user [Person]" as api_user
+actor "Operator [Person]" as operator
+
+' Определение сервисов (Components)
+component "Internet Shop\n[Container: Vue, TypeScript, Three.js]\nUser can make an order, upload 3d model, work in 3d editor" as internet_shop
+component "Shop API\n[Container: SpringBoot]\nreceives user generated or uploaded 3d file, saves information about order from customer perspective" as shop_api
+component "CRM\n[Container: Vue, Typescript]\nDescription of web browser container role/responsibility" as crm
+component "CRM API\n[Container: SpringBoot]\nDescription of container role/responsibility" as crm_api
+component "MES API\n[Container: C#]\nAssigns orders on operators, Shows list of orders, Calculates price of the order" as mes_api
+component "MES\n[Container: React, typescript]\nprovides interface to assign orders on operators, shows list of orders" as mes
+
+' Определение хранилищ данных (Databases)
+database "Shop DB\n[Container: PostgreSQL]\nHolds main information about customers and its orders" as shop_db
+database "MES db\n[Container: PostgreSQL]\nHolds information about orders, its assignments on operators and statuses from MES perspective" as mes_db
+
+' Определение очереди сообщений (Queue)
+queue "Messages Queue\n[Container: RabbitMQ]\nSend messages about new orders, changes of statuses between containers, has several topics" as messages_queue
+
+' Определение хранилища файлов
+component "3D files storage\n[Container: S3-based storage]\nstores 3d files so that can be calculated" as s3_storage
+
+' Добавление CDN (CloudFront)
+component "CDN\n[CloudFront]\nDelivers static 3D models and pre-rendered thumbnails via global edge locations" as cdn
+
+' Добавление локального кэша для 3D файлов
+component "Local Cache\n[In-Memory Storage]\nCaches frequently accessed 3D models and thumbnails for MES API and Shop API" as local_cache
+
+' Определение Kubernetes
+component "Kubernetes Cluster" as kubernetes
+
+' Определение Linkerd
+component "Linkerd Service Mesh" as linkerd
+
+' Определение систем мониторинга
+component "Prometheus\n[Metric Collection]" as prometheus
+component "Loki\n[Log Collection]" as loki
+component "Jaeger\n[Trace Collection]" as jaeger
+
+' Добавление Redis Cache
+component "Redis Cache\n[In-Memory Storage]\nStores frequently accessed data for MES API, CRM API, and other services" as redis_cache
+
+' Добавление API Gateway с HTTP-кешированием
+component "API Gateway\n[HTTP Caching]\nCaches HTTP responses for frequently requested endpoints" as api_gateway
+
+' Соединения между компонентами
+
+' Потоки данных через Kubernetes и Linkerd
+customer --> api_gateway : Makes an order
+api_gateway --> kubernetes : Routes request
+kubernetes --> internet_shop : Routes request
+internet_shop --> kubernetes : Sends order details
+kubernetes --> shop_api : Routes request
+shop_api --> kubernetes : Saves order information
+kubernetes --> shop_db : Stores order data
+kubernetes --> messages_queue : Sends message about new order
+
+crm --> kubernetes : Interacts with CRM API
+kubernetes --> crm_api : Routes request
+crm_api --> kubernetes : Sends messages
+messages_queue -->  kubernetes : Routes messages
+ 
+mes_api --> kubernetes : Receives messages
+kubernetes --> mes_api : Accesses 3D files, stores order assignments, updated status
+kubernetes --> s3_storage : Routes request
+kubernetes --> mes_db : Stores order assignments, updated status
+
+mes --> kubernetes : Assigns orders
+
+api_user --> kubernetes : Interacts with MES API
+
+operator --> kubernetes : Takes orders for manufacturing
+kubernetes --> mes : Routes request
+
+seller --> kubernetes : Confirms manufacturing
+kubernetes --> crm : Routes request
+
+' Интеграция Linkerd
+kubernetes --> linkerd : Injects sidecar proxies
+linkerd --> internet_shop : Manages traffic
+linkerd --> shop_api : Manages traffic
+linkerd --> crm : Manages traffic
+linkerd --> crm_api : Manages traffic
+linkerd --> mes_api : Manages traffic
+linkerd --> mes : Manages traffic
+
+' Интеграция систем мониторинга
+kubernetes --> prometheus : Exports metrics
+kubernetes --> loki : Exports logs
+kubernetes --> jaeger : Exports traces
+
+' Интеграция Redis Cache
+shop_api --> redis_cache : Reads/Writes cached data
+crm_api --> redis_cache : Reads/Writes cached data
+mes_api --> redis_cache : Reads/Writes cached data
+mes --> redis_cache : Reads cached data
+
+' Интеграция API Gateway с HTTP-кешированием
+api_gateway --> redis_cache : Checks if response is cached
+api_gateway --> kubernetes : Forwards request if not cached
+api_gateway --> customer : Returns cached response
+
+' Интеграция CDN и локального кэша
+cdn --> s3_storage : Fetches 3D models and thumbnails
+shop_api --> local_cache : Reads/Writes frequently accessed 3D models
+mes_api --> local_cache : Reads/Writes frequently accessed 3D models
+local_cache --> cdn : Fetches missing files from CDN
+cdn --> customer : Delivers static 3D models and thumbnails
+mes_api --> cdn : Fetches pre-rendered thumbnails for lists
+shop_api --> cdn : Fetches pre-rendered thumbnails for lists
+
+@enduml
